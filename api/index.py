@@ -16,10 +16,9 @@ from telegram.ext import (
 from config import BOT_TOKEN, CHANNEL_ID
 from messages import *
 
-# Inisialisasi Flask
 app = Flask(__name__)
 
-# Variabel penyimpanan (Reset jika bot idle lama di Vercel)
+# Variabel penyimpanan sementara
 user_requests = {}
 user_state = {}
 user_last_post = {}
@@ -27,9 +26,10 @@ POST_COOLDOWN = 3600
 ALLOWED_TAGS = {"#wts", "#wtb", "#wtt"}
 
 # Inisialisasi Application secara global
+# Kita gunakan build() tapi jangan panggil initialize() di luar loop
 application = Application.builder().token(BOT_TOKEN).build()
 
-# --- FUNGSI ASLI KAMU ---
+# --- FUNGSI HELPER ---
 
 async def is_user_joined(bot, user_id: int) -> bool:
     try:
@@ -53,7 +53,7 @@ def post_action_keyboard():
     ])
 
 def validate_hashtag(text: str) -> bool:
-    if not text or not text.strip(): return False
+    if not text: return False
     first_word = text.split()[0].lower()
     return first_word in {tag.lower() for tag in ALLOWED_TAGS}
 
@@ -104,7 +104,7 @@ async def post_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
         user_requests.pop(user_id, None)
         user_state.pop(user_id, None)
     except Exception as e:
-        await query.message.reply_text(f"❌ Gagal kirim ke channel: {str(e)}")
+        await query.message.reply_text(f"❌ Gagal kirim: {str(e)}")
 
 async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or (update.message.text and update.message.text.startswith("/")): return
@@ -120,28 +120,38 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_requests[user_id] = {"chat_id": update.message.chat_id, "message_id": update.message.message_id}
     await update.message.reply_text(MSG_REQUEST_RECEIVED, reply_markup=post_action_keyboard())
 
-# --- DAFTARKAN HANDLER ---
-def setup_handlers(app_tg):
-    if not app_tg.handlers:
-        app_tg.add_handler(CommandHandler("start", start))
-        app_tg.add_handler(CallbackQueryHandler(open_request_callback, pattern="^(open_request|edit_request)$"))
-        app_tg.add_handler(CallbackQueryHandler(post_request_callback, pattern="^post_request$"))
-        app_tg.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_user_message))
+# Daftarkan handler SEKALI SAJA di luar route
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(open_request_callback, pattern="^(open_request|edit_request)$"))
+application.add_handler(CallbackQueryHandler(post_request_callback, pattern="^post_request$"))
+application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_user_message))
 
 # --- VERCEL ROUTE ---
+
 @app.route('/', methods=['POST', 'GET'])
-def main():
+def main_handler():
     if request.method == 'POST':
-        setup_handlers(application)
-        update_data = request.get_json(force=True)
-        update = Update.de_json(update_data, application.bot)
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(application.initialize())
-            loop.run_until_complete(application.process_update(update))
-        finally:
+            update_data = request.get_json(force=True)
+            # Menggunakan loop yang sudah ada atau buat baru jika tidak ada
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            # Jalankan inisialisasi dan proses update dalam satu sesi loop
+            async def process():
+                # Pastikan bot sudah terinisialisasi
+                if not application.bot_data.get('initialized'):
+                    await application.initialize()
+                    application.bot_data['initialized'] = True
+                
+                update = Update.de_json(update_data, application.bot)
+                await application.process_update(update)
+            
+            loop.run_until_complete(process())
             loop.close()
-        return 'OK', 200
+            return 'OK', 200
+        except Exception as e:
+            print(f"Error: {e}")
+            return 'Error', 500
+            
     return 'Bot is Running', 200
