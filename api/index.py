@@ -16,7 +16,6 @@ from messages import *
 
 app = Flask(__name__)
 
-# Inisialisasi global agar lebih cepat
 application = Application.builder().token(BOT_TOKEN).build()
 
 user_requests = {}   # Menyimpan request aktif user
@@ -91,13 +90,9 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_state.get(user_id) != "awaiting_message": 
         return
 
-    # Cek apakah user sudah punya request aktif
+    # Cek apakah user sudah punya request aktif, jika ya diam saja
     if user_requests.get(user_id):
-        await update.message.reply_text(
-            "⚠️ Kamu sudah mengirim request sebelumnya. Gunakan tombol Edit atau Post untuk melanjutkan.",
-            parse_mode="HTML"
-        )
-        return
+        return  # Diam, tidak merespons
 
     text = update.message.text or update.message.caption or ""
     first_word = text.split()[0].lower() if text.split() else ""
