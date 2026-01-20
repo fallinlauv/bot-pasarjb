@@ -25,6 +25,7 @@ MSG_START_UNJOINED = (
 MSG_VERIFY_SUCCESS = "✅ Verifikasi berhasil."
 MSG_VERIFY_ERROR = "❌ Kamu belum join channel."
 MSG_SEND_REQUEST = "📩 Silakan kirim pesan yang ingin dipost ke channel."
-MSG_REQUEST_RECEIVED = "Pesan diterima! Pilih tindakan selanjutnya:"
+MSG_REQUEST_RECEIVED = "Pesan di terima! Pilih tindakan selanjutnya:"
 MSG_POST_SUCCESS = "✅ Request berhasil dipost ke channel."
+
 MSG_ERROR_NO_REQUEST = "❌ Tidak ada request aktif."
