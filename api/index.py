@@ -81,7 +81,7 @@ async def post_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
         last_post = user_last_post.get(user_id)
         if last_post and now - last_post < POST_COOLDOWN:
             remaining = int((POST_COOLDOWN - (now - last_post)) / 60)
-            await query.message.reply_text(f"💬 Tunggu {remaining} menit lagi.")
+            await query.message.reply_text(f"⏱ kamu hanya di perbolehkan mengirim pesan setelah {remaining} menit lagi.")
             return
 
     try:
@@ -130,7 +130,7 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if is_edit:
         await update.message.reply_text(
-            "Pesan diperbarui! Pilih tindakan selanjutnya:",
+            "Pesan telah di perbarui! Pilih tindakan selanjutnya:",
             reply_markup=keyboard
         )
     else:
