@@ -54,7 +54,7 @@ async def open_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text("Kamu belum bergabung di saluran kami.")
         return
 
-    # Jika sudah join, baru update state menunggu pesan
+    # Set state menunggu pesan
     user_state[user_id] = "awaiting_message"
     await query.message.reply_text(MSG_SEND_REQUEST)
 
@@ -107,10 +107,6 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if user_state.get(user_id) != "awaiting_message": 
         return
 
-    # Diam jika user sudah punya request aktif
-    if user_requests.get(user_id):
-        return
-
     text = update.message.text or update.message.caption or ""
     first_word = text.split()[0].lower() if text.split() else ""
 
@@ -118,7 +114,10 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(MSG_INVALID_HASHTAG, parse_mode="HTML")
         return
 
-    # Simpan request baru
+    # Jika request sudah ada, berarti ini edit
+    is_edit = user_requests.get(user_id) is not None
+
+    # Simpan atau perbarui request
     user_requests[user_id] = {
         "chat_id": update.message.chat_id,
         "message_id": update.message.id
@@ -128,7 +127,17 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("✏️ Edit Request", callback_data="open_request")],
         [InlineKeyboardButton("📤 Post to Channel", callback_data="post_request")]
     ])
-    await update.message.reply_text(MSG_REQUEST_RECEIVED, reply_markup=keyboard)
+
+    if is_edit:
+        await update.message.reply_text(
+            "Pesan diperbarui! Pilih tindakan selanjutnya:",
+            reply_markup=keyboard
+        )
+    else:
+        await update.message.reply_text(
+            MSG_REQUEST_RECEIVED,
+            reply_markup=keyboard
+        )
 
 # =========================
 # REGISTRASI HANDLER
