@@ -17,17 +17,17 @@ from messages import *
 
 app = Flask(__name__)
 
-# 1. Inisialisasi Application secara global
+# Inisialisasi Bot Global
 application = Application.builder().token(BOT_TOKEN).build()
 
-# Variabel penyimpanan (Akan reset jika server idle)
+# Variabel penyimpanan (Reset jika server idle)
 user_requests = {}
 user_state = {}
 user_last_post = {}
 POST_COOLDOWN = 3600
 ALLOWED_TAGS = {"#wts", "#wtb", "#wtt"}
 
-# --- FUNGSI HELPER ---
+# --- HELPER ---
 async def is_user_joined(bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
@@ -94,36 +94,27 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not validate_hashtag(text):
         await update.message.reply_text(MSG_INVALID_HASHTAG, parse_mode="HTML")
         return
-    user_requests[user_id] = {"chat_id": update.message.chat_id, "message_id": update.message.message_id}
+    user_requests[user_id] = {"chat_id": update.message.chat_id, "message_id": update.message.id}
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✏️ Edit Request", callback_data="edit_request")], [InlineKeyboardButton("📤 Post to Channel", callback_data="post_request")]])
     await update.message.reply_text(MSG_REQUEST_RECEIVED, reply_markup=keyboard)
 
-# 2. Daftarkan Handler di luar route (Agar tidak terdaftar berulang kali)
+# DAFTARKAN HANDLER (PENTING: Di luar fungsi route)
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CallbackQueryHandler(open_request_callback, pattern="^(open_request|edit_request)$"))
 application.add_handler(CallbackQueryHandler(post_request_callback, pattern="^post_request$"))
 application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_user_message))
 
-# --- VERCEL ROUTE ---
+# --- VERCEL ENTRY POINT ---
 @app.route('/', methods=['POST', 'GET'])
 def main():
     if request.method == 'POST':
         try:
-            # Menggunakan loop tunggal yang sangat cepat
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
             update_data = request.get_json(force=True)
-            update = Update.de_json(update_data, application.bot)
-            
-            # KUNCI: Jangan panggil application.initialize() secara penuh jika bot sudah siap
-            # Langsung proses update secepat mungkin
-            loop.run_until_complete(application.process_update(update))
-            loop.close()
-            
-            # Kembalikan OK secepat mungkin agar Telegram tidak mengirim ulang (retry)
+            # Proses async secara mandiri
+            asyncio.run(application.initialize())
+            asyncio.run(application.process_update(Update.de_json(update_data, application.bot)))
             return 'OK', 200
         except Exception as e:
-            return 'OK', 200 # Tetap balikkan 200 meskipun error internal
-            
+            print(f"Error: {e}")
+            return 'OK', 200
     return 'Bot is Running', 200
