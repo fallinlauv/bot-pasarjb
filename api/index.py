@@ -38,21 +38,6 @@ async def is_user_joined(bot, user_id: int) -> bool:
 # HANDLERS
 # =========================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    user_state.pop(user_id, None)
-    user_requests.pop(user_id, None)
-
-    joined = await is_user_joined(context.bot, user_id)
-    if not joined:
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/yourchannel")]
-        ])
-        await update.message.reply_text(
-            "Kamu harus join channel terlebih dahulu untuk menggunakan bot.", 
-            reply_markup=keyboard
-        )
-        return
-
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton("📩 Open Request", callback_data="open_request")]
     ])
@@ -66,12 +51,10 @@ async def open_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
     # Cek join channel
     joined = await is_user_joined(context.bot, user_id)
     if not joined:
-        await query.message.reply_text(
-            f"⚠️ Kamu harus join channel terlebih dahulu: t.me/yourchannel"
-        )
+        await query.message.reply_text("Kamu belum bergabung di saluran kami.")
         return
 
-    # Set state menunggu pesan
+    # Jika sudah join, baru update state menunggu pesan
     user_state[user_id] = "awaiting_message"
     await query.message.reply_text(MSG_SEND_REQUEST)
 
