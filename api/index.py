@@ -11,21 +11,23 @@ from telegram.ext import (
     filters
 )
 
+# Impor dari file kamu
 from config import BOT_TOKEN, CHANNEL_ID
 from messages import *
 
 app = Flask(__name__)
 
-# Gunakan satu global application instance
+# 1. Inisialisasi Application secara global
 application = Application.builder().token(BOT_TOKEN).build()
 
+# Variabel penyimpanan (Akan reset jika server idle)
 user_requests = {}
 user_state = {}
 user_last_post = {}
 POST_COOLDOWN = 3600
 ALLOWED_TAGS = {"#wts", "#wtb", "#wtt"}
 
-# --- HELPER ---
+# --- FUNGSI HELPER ---
 async def is_user_joined(bot, user_id: int) -> bool:
     try:
         member = await bot.get_chat_member(chat_id=CHANNEL_ID, user_id=user_id)
@@ -43,7 +45,7 @@ def validate_hashtag(text: str) -> bool:
     first_word = text.split()[0].lower()
     return first_word in {tag.lower() for tag in ALLOWED_TAGS}
 
-# --- HANDLERS ---
+# --- HANDLER SECTION ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_state.pop(user_id, None)
@@ -53,7 +55,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def open_request_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() # Jawab instan
+    await query.answer() 
     user_id = query.from_user.id
     if not await is_user_joined(context.bot, user_id):
         await query.message.reply_text("❌ Kamu belum bergabung di saluran kami.")
@@ -63,13 +65,12 @@ async def open_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def post_request_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() # Jawab instan
+    await query.answer()
     user_id = query.from_user.id
     request_data = user_requests.get(user_id)
     if not request_data:
         await query.message.reply_text(MSG_ERROR_NO_REQUEST)
         return
-
     if not await is_admin(context.bot, user_id):
         now = time.time()
         last_post = user_last_post.get(user_id)
@@ -77,13 +78,11 @@ async def post_request_callback(update: Update, context: ContextTypes.DEFAULT_TY
             remaining = int((POST_COOLDOWN - (now - last_post)) / 60)
             await query.message.reply_text(f"💬 Tunggu {remaining} menit lagi.")
             return
-
     try:
         await context.bot.copy_message(chat_id=CHANNEL_ID, from_chat_id=request_data["chat_id"], message_id=request_data["message_id"])
         user_last_post[user_id] = time.time()
         await query.edit_message_text(MSG_POST_SUCCESS, reply_markup=None)
         user_requests.pop(user_id, None)
-        user_state.pop(user_id, None)
     except Exception as e:
         await query.message.reply_text(f"❌ Gagal: {str(e)}")
 
@@ -99,26 +98,32 @@ async def handle_user_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("✏️ Edit Request", callback_data="edit_request")], [InlineKeyboardButton("📤 Post to Channel", callback_data="post_request")]])
     await update.message.reply_text(MSG_REQUEST_RECEIVED, reply_markup=keyboard)
 
-# REGISTRASI HANDLER (Hanya sekali)
-if not application.handlers:
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(open_request_callback, pattern="^(open_request|edit_request)$"))
-    application.add_handler(CallbackQueryHandler(post_request_callback, pattern="^post_request$"))
-    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_user_message))
+# 2. Daftarkan Handler di luar route (Agar tidak terdaftar berulang kali)
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CallbackQueryHandler(open_request_callback, pattern="^(open_request|edit_request)$"))
+application.add_handler(CallbackQueryHandler(post_request_callback, pattern="^post_request$"))
+application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_user_message))
 
-# --- VERCEL ENTRY POINT ---
+# --- VERCEL ROUTE ---
 @app.route('/', methods=['POST', 'GET'])
 def main():
     if request.method == 'POST':
-        update_data = request.get_json(force=True)
-        # Gunakan loop yang lebih efisien tanpa membuat baru terus menerus jika tidak perlu
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(application.initialize())
+            # Menggunakan loop tunggal yang sangat cepat
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            update_data = request.get_json(force=True)
             update = Update.de_json(update_data, application.bot)
+            
+            # KUNCI: Jangan panggil application.initialize() secara penuh jika bot sudah siap
+            # Langsung proses update secepat mungkin
             loop.run_until_complete(application.process_update(update))
-        finally:
             loop.close()
-        return 'OK', 200
+            
+            # Kembalikan OK secepat mungkin agar Telegram tidak mengirim ulang (retry)
+            return 'OK', 200
+        except Exception as e:
+            return 'OK', 200 # Tetap balikkan 200 meskipun error internal
+            
     return 'Bot is Running', 200
